@@ -89,20 +89,20 @@ def get_vuls():
     return {"message": vuls}
 
 
-@app.get("/database")
-def get_database():
-    json_files = []
-    folder = "/tmp/advisory-database/advisories/github-reviewed"
-    def find_json(folder):
-        for item in os.listdir(folder):
-            path = os.path.join(folder, item)
+# @app.get("/database")
+# def get_database():
+#     json_files = []
+#     folder = "/tmp/advisory-database/advisories/github-reviewed"
+#     def find_json(folder):
+#         for item in os.listdir(folder):
+#             path = os.path.join(folder, item)
 
-            if os.path.isdir(path):
-                find_json(path)   # recursion
-            elif item.endswith(".json"):
-                json_files.append(path)
-    find_json(folder)
-    return json_files
+#             if os.path.isdir(path):
+#                 find_json(path)   # recursion
+#             elif item.endswith(".json"):
+#                 json_files.append(path)
+#     find_json(folder)
+#     return json_files
   
 
 @app.get("/")
