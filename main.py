@@ -71,8 +71,7 @@ async def main(dependencies):
         for result in results:
             for component in result:
                 for vul in component.get("vulnerabilities", []):
-                    combined_result.extend(vul.get("id"))
-            # combined_result.extend(result.get("vulns", []))
+                    combined_result.extend(vul.get("id"))            
 
         return combined_result
 
