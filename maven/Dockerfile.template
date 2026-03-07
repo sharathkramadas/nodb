@@ -1,0 +1,8 @@
+FROM amazoncorretto:${java_version}
+
+RUN dnf install -y curl tar git --allowerasing && dnf clean all
+
+RUN curl -fsSL https://archive.apache.org/dist/maven/maven-3/${maven_version}/binaries/apache-maven-${maven_version}-bin.tar.gz \
+ | tar -xz -C /opt
+
+ENV PATH="/opt/apache-maven-${maven_version}/bin:$$PATH"

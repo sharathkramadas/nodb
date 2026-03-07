@@ -1,0 +1,10 @@
+fastapi 
+uvicorn
+lxml
+semver
+dotenv
+python-gitlab
+requests
+pyyaml
+GitPython
+aiohttp

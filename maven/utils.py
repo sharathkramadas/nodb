@@ -17,6 +17,8 @@ from typing import Dict
 import semver
 from lxml import etree
 
+from string import Template
+
 
 class MavenUtils:
 
@@ -28,10 +30,6 @@ class MavenUtils:
 
         self.dep_tree_file = "dependency-tree.txt"
         self.dep_tree_path = os.path.join(project_dir, self.dep_tree_file)
-
-    # ---------------------------------------------------------------------
-    # VERSION UTILS
-    # ---------------------------------------------------------------------
 
     def compare_versions(self, current, latest):
 
@@ -55,10 +53,6 @@ class MavenUtils:
             return "PATCH"
 
         return "UP-TO-DATE"
-
-    # ---------------------------------------------------------------------
-    # MAVEN API
-    # ---------------------------------------------------------------------
 
     def get_latest_version(self, group_id, artifact_id):
 
@@ -102,10 +96,6 @@ class MavenUtils:
         except Exception:
             return None
 
-    # ---------------------------------------------------------------------
-    # DEPENDENCY TREE PARSER
-    # ---------------------------------------------------------------------
-
     def parse_dependency_tree(self, tree_text):
 
         dependencies = []
@@ -137,10 +127,10 @@ class MavenUtils:
             group, artifact_id, packaging, version, scope = parts[:5]
 
             node = {
-                "groupId": group,
+                "groupId": group.replace("(",""),
                 "artifactId": artifact_id,
                 "version": version,
-                "scope": scope,
+                "scope": scope.split(" ")[0].strip(),
                 "depth": depth,
                 "parent": None,
             }
@@ -156,9 +146,16 @@ class MavenUtils:
 
         return dependencies
 
-    # ---------------------------------------------------------------------
-    # DEPENDENCY TREE HELPERS
-    # ---------------------------------------------------------------------
+    def extract_dependencies(self, lines): 
+        dependencies = {} 
+        pattern = r"^\s*\+-\s*(\S+:\S+):jar:(\S+)" 
+        for line in lines: 
+            match = re.search(pattern, line) 
+            if match: 
+                dep = match.group(1) 
+                version = match.group(2) 
+                dependencies[dep] = ''.join(version.split(":")[:-1]) 
+        return dependencies
 
     def find_highest_parents(self, tree_text, target_ga):
 
@@ -197,10 +194,6 @@ class MavenUtils:
 
         return highest
 
-    # ---------------------------------------------------------------------
-    # VULNERABILITY SCAN
-    # ---------------------------------------------------------------------
-
     def find_vulnerability(self, package_name, version):
 
         url = "https://api.osv.dev/v1/query"
@@ -218,10 +211,6 @@ class MavenUtils:
         vulns = r.json().get("vulns", [])
 
         return [v["id"] for v in vulns]
-
-    # ---------------------------------------------------------------------
-    # POM XML UTILS
-    # ---------------------------------------------------------------------
 
     def load_pom(self):
 
@@ -249,10 +238,6 @@ class MavenUtils:
                 return dep
 
         return None
-
-    # ---------------------------------------------------------------------
-    # DEPENDENCY UPDATE
-    # ---------------------------------------------------------------------
 
     def update_dependency_version(self, root, dep, new_version):
 
@@ -287,29 +272,67 @@ class MavenUtils:
         etree.SubElement(dep, "{%s}artifactId" % self.NS["m"]).text = artifact_id
         etree.SubElement(dep, "{%s}version" % self.NS["m"]).text = version
 
-    # ---------------------------------------------------------------------
-    # MAVEN DOCKER IMAGE
-    # ---------------------------------------------------------------------
+    def get_java_version_from_pom(self): 
+        pom_path = os.path.join(self.project_dir, "pom.xml") 
+        if not os.path.exists(pom_path): 
+            return None 
+        tree = ET.parse(pom_path) 
+        root = tree.getroot() 
+        ns = {"m": root.tag.split("}")[0].strip("{")} 
+        props = root.find("m:properties", ns) 
+        if props is not None: 
+            for tag in ["java.version", "maven.compiler.source", "maven.compiler.target"]: 
+                el = props.find(f"m:{tag}", ns) 
+                if el is not None and el.text: 
+                    return el.text.strip() 
+        for plugin in root.findall(".//m:plugin", ns): 
+            artifact = plugin.find("m:artifactId", ns) 
+            if artifact is not None and artifact.text == "maven-compiler-plugin": 
+                source = plugin.find(".//m:source", ns) 
+                target = plugin.find(".//m:target", ns) 
+                if source is not None: 
+                    return source.text.strip() 
+                if target is not None: 
+                    return target.text.strip() 
+        return None
+
+    def get_maven_version_from_wrapper(self): 
+        wrapper_path = os.path.join(self.project_dir, ".mvn", "wrapper", "maven-wrapper.properties") 
+        if not os.path.exists(wrapper_path): 
+            return "3.8.6" 
+        with open(wrapper_path) as f: 
+            for line in f: 
+                if "distributionUrl" in line: 
+                    match = re.search(r'apache-maven-([\d.]+)-bin\.zip', line) 
+                    if match: 
+                        if match.group(1) == "3.6.0": 
+                            return "3.8.1"# safe default 
+
+    def get_maven_docker_image(self, maven_version, java_version=None):
+        if not maven_version: 
+            maven_version = "3.9.6"
+        if not java_version: 
+            java_version = "17" 
+        return self.build_docker_image(java_version, maven_version)
 
     def build_docker_image(self, java_version="17", maven_version="3.9.6"):
 
-        name = f"mvn-{maven_version}-jdk{java_version}"
-
-        dockerfile = f"""
-FROM amazoncorretto:{java_version}
-
-RUN yum install -y curl tar git
-
-RUN curl -fsSL https://archive.apache.org/dist/maven/maven-3/{maven_version}/binaries/apache-maven-{maven_version}-bin.tar.gz \
- | tar -xz -C /opt
-
-ENV PATH="/opt/apache-maven-{maven_version}/bin:$PATH"
-"""
+        name = f"mvn-{maven_version}-jdk{java_version}"        
 
         dockerfile_path = "Dockerfile.maven"
+        template_path = os.path.join(os.getcwd(), "maven", "Dockerfile.template")
+        with open(template_path) as f:
+            dockerfile_template = Template(f.read())
+        variables = {
+            "java_version":java_version,
+            "maven_version":maven_version
+        }
 
+        dockerfile_content = dockerfile_template.substitute(variables)
+
+        print(dockerfile_content)
         with open(dockerfile_path, "w") as f:
-            f.write(dockerfile)
+            f.write(dockerfile_content)
 
         subprocess.run(
             [
@@ -326,12 +349,7 @@ ENV PATH="/opt/apache-maven-{maven_version}/bin:$PATH"
 
         return name
 
-    # ---------------------------------------------------------------------
-    # MAVEN COMMANDS
-    # ---------------------------------------------------------------------
-
     def run_maven_dependency_tree(self, docker_image):
-
         cmd = [
             "docker",
             "run",
@@ -350,10 +368,6 @@ ENV PATH="/opt/apache-maven-{maven_version}/bin:$PATH"
         ]
 
         subprocess.run(cmd)
-
-    # ---------------------------------------------------------------------
-    # DEPENDENCY SCANNER
-    # ---------------------------------------------------------------------
 
     def extract_dependencies(self, lines):
 
@@ -403,19 +417,3 @@ ENV PATH="/opt/apache-maven-{maven_version}/bin:$PATH"
                     self.compare_versions(version, latest),
                 )
 
-
-# -------------------------------------------------------------------------
-# MAIN
-# -------------------------------------------------------------------------
-
-if __name__ == "__main__":
-
-    project_dir = os.getcwd()
-
-    maven = MavenUtils(project_dir)
-
-    image = maven.build_docker_image()
-
-    maven.run_maven_dependency_tree(image)
-
-    maven.scan_dependencies()

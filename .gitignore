@@ -1,0 +1,4 @@
+venv
+.env
+Dockerfile.maven
+__pycache__

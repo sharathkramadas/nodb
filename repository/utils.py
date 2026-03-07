@@ -1,5 +1,13 @@
-class GitUtils:
+import os
+from dotenv import load_dotenv
+from pathlib import Path
+import gitlab
+import shutil
+from git import Repo
+import requests
+import yaml
 
+class GitUtils:
     def __init__(self):
         load_dotenv()
         self.PRIVATE_TOKEN = os.getenv("GITLAB_TOKEN")
@@ -7,6 +15,10 @@ class GitUtils:
         self.headers = {"PRIVATE-TOKEN": self.PRIVATE_TOKEN}
         self.repo_path = "/tmp/repo"
         self.gl = gitlab.Gitlab(self.GITLAB_URL, private_token=self.PRIVATE_TOKEN)
+
+    def clone_public_repo(self, repo_url):        
+        repo = Repo.clone_from(repo_url, self.repo_path)
+        return 'Repo clone complete'        
 
     def clone_repo(self, project_name):
         PROJECT_ID = self.get_project_id(project_name)
