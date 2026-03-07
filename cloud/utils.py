@@ -1,3 +1,67 @@
+class CloudUtils:
+
+    def __init__(self):
+        pass
+
+    def get_domain_name(self, url):
+        parsed_url = urlparse(url)
+        return parsed_url.netloc.split(":")[0]
+
+    def get_ip_from_url(self, url):
+        domain = self.get_domain_name(url)
+
+        try:
+            ip_address = socket.gethostbyname(domain)
+
+            print(f"[+] Domain: {domain}")
+            print(f"[+] IP Address: {ip_address}")
+
+            return ip_address
+
+        except socket.gaierror:
+            print(f"[-] Could not resolve {domain}")
+            return None
+
+    def fetch_aws_ip_ranges(self):
+        url = "https://ip-ranges.amazonaws.com/ip-ranges.json"
+
+        r = requests.get(url)
+        data = r.json()
+
+        ranges = [
+            ipaddress.ip_network(prefix["ip_prefix"])
+            for prefix in data["prefixes"]
+        ]
+
+        return ranges
+
+    def fetch_gcp_ip_ranges(self):
+        url = "https://www.gstatic.com/ipranges/cloud.json"
+
+        r = requests.get(url)
+        data = r.json()
+
+        ranges = [
+            ipaddress.ip_network(prefix["ipv4Prefix"])
+            for prefix in data["prefixes"]
+            if "ipv4Prefix" in prefix
+        ]
+
+        return ranges
+
+    def identify_cloud(self, ip):
+        ip_addr = ipaddress.ip_address(ip)
+
+        for network in self.fetch_aws_ip_ranges():
+            if ip_addr in network:
+                return "AWS"
+
+        for network in self.fetch_gcp_ip_ranges():
+            if ip_addr in network:
+                return "GCP"
+
+        return "Unknown"
+
 class AWSUtils(CloudUtils):
 
     def __init__(self):
