@@ -1,6 +1,10 @@
 ### Getting Started
 
 ```bash
+python cli.py --scan https://github.com/WebGoat/WebGoat
+```
+
+```bash
 brew install httpie
 ```
 
