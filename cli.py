@@ -34,15 +34,17 @@ def main():
 
     if args.scan:
         if is_valid_git_url(args.scan):
-            maven = MavenUtils(project_dir=project_dir)
             if not os.path.exists(tree_path):
                 status = GitUtils().clone_public_repo(args.scan)  
+                maven = MavenUtils(project_dir=project_dir)
                 java_version = maven.get_java_version_from_pom()
                 maven_version = maven.get_maven_version_from_wrapper()
                 docker_image = maven.get_maven_docker_image(maven_version, java_version)    
                 maven.run_maven_dependency_tree(docker_image)
+            tree_path = os.path.join(maven.project_dir, "dependency-tree.txt")
             with open(tree_path) as fp:
                 tree_text = fp.read()
+                maven = MavenUtils(project_dir=project_dir)
                 dependencies = maven.parse_dependency_tree(tree_text) 
                 visited = set()
                 printed = set()
@@ -63,10 +65,16 @@ def main():
                                     # table.add_row(package,vid, package, "Maven", dep.get('version'), fix_version or "No Fix")   
                 console.print(table)
     elif args.fix:
+        status = GitUtils().clone_public_repo(args.fix)
+        maven = MavenUtils(project_dir=project_dir)
+        java_version = maven.get_java_version_from_pom()
+        maven_version = maven.get_maven_version_from_wrapper()
+        docker_image = maven.get_maven_docker_image(maven_version, java_version)    
+        maven.run_maven_dependency_tree(docker_image)
+        tree_path = os.path.join(maven.project_dir, "dependency-tree.txt")
         if not os.path.exists(tree_path):
             sys.exit()
         else:
-            maven = MavenUtils(project_dir=project_dir)
             with open(tree_path) as fp:
                 tree_text = fp.read()
                 dependencies = maven.parse_dependency_tree(tree_text) 

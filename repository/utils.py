@@ -22,6 +22,7 @@ class GitUtils:
             shutil.rmtree(self.repo_path)
         repo = Repo.clone_from(repo_url, self.repo_path)
         print("[*] Repo clone complete")
+        return self.repo_path
 
     def clone_repo(self, project_name):
         PROJECT_ID = self.get_project_id(project_name)

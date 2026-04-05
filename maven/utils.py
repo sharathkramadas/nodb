@@ -26,12 +26,19 @@ class MavenUtils:
 
     NS = {"m": "http://maven.apache.org/POM/4.0.0"}
 
-    def __init__(self, project_dir: str):
-        self.project_dir = project_dir
-        self.pom_path = os.path.join(project_dir, "pom.xml")
+    def __init__(self, project_dir: str):    
+        pom_files = []
+        for dirpath, dirnames, filenames in os.walk(project_dir):
+            if "pom.xml" in filenames:
+                pom_files.append(dirpath)
+        if len(pom_files) > 1:
+            print("[*] Multi pom file repos are not supported yet!!!")  
+            sys.exit()        
+        self.project_dir = pom_files[0]
+        self.pom_path = os.path.join(self.project_dir, "pom.xml")
 
         self.dep_tree_file = "dependency-tree.txt"
-        self.dep_tree_path = os.path.join(project_dir, self.dep_tree_file)
+        self.dep_tree_path = os.path.join(self.project_dir, self.dep_tree_file)
 
     def compare_versions(self, current, latest):
 
@@ -286,16 +293,16 @@ class MavenUtils:
             for tag in ["java.version", "maven.compiler.source", "maven.compiler.target"]: 
                 el = props.find(f"m:{tag}", ns) 
                 if el is not None and el.text: 
-                    return el.text.strip() 
+                    return el.text.split(".")[-1].strip() 
         for plugin in root.findall(".//m:plugin", ns): 
             artifact = plugin.find("m:artifactId", ns) 
             if artifact is not None and artifact.text == "maven-compiler-plugin": 
                 source = plugin.find(".//m:source", ns) 
                 target = plugin.find(".//m:target", ns) 
                 if source is not None: 
-                    return source.text.strip() 
+                    return source.text.split(".")[-1].strip() 
                 if target is not None: 
-                    return target.text.strip() 
+                    return target.text.split(".")[-1].strip() 
         return None
 
     def get_maven_version_from_wrapper(self): 
