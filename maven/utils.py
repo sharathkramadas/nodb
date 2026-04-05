@@ -13,10 +13,12 @@ from pathlib import Path
 from urllib.parse import quote_plus, quote, urlparse
 from collections import defaultdict
 from typing import Dict
-
+import docker
+from docker.errors import ContainerError, ImageNotFound, APIError
+import sys
 import semver
 from lxml import etree
-
+from tqdm import tqdm
 from string import Template
 
 
@@ -316,7 +318,6 @@ class MavenUtils:
         return self.build_docker_image(java_version, maven_version)
 
     def build_docker_image(self, java_version="17", maven_version="3.9.6"):
-
         name = f"mvn-{maven_version}-jdk{java_version}"        
 
         dockerfile_path = "Dockerfile.maven"
@@ -330,44 +331,51 @@ class MavenUtils:
 
         dockerfile_content = dockerfile_template.substitute(variables)
 
-        print(dockerfile_content)
         with open(dockerfile_path, "w") as f:
-            f.write(dockerfile_content)
-
-        subprocess.run(
-            [
-                "docker",
-                "build",
-                "-t",
-                name,
-                "-f",
-                dockerfile_path,
-                ".",
-            ],
-            check=True,
+            f.write(dockerfile_content)      
+        client = docker.from_env()
+        image, logs = client.images.build(
+            path=".",                  
+            dockerfile=dockerfile_path, 
+            tag=name,
+            rm=True                     
         )
-
+        print('[*] Docker image built successfully')
         return name
 
-    def run_maven_dependency_tree(self, docker_image):
-        cmd = [
-            "docker",
-            "run",
-            "--rm",
-            "-v",
-            f"{self.project_dir}:/usr/src/app",
-            "-w",
-            "/usr/src/app",
-            docker_image,
-            "mvn",
-            "dependency:tree",
-            "-Dscope=runtime",
-            "-DoutputType=text",
-            "-Dverbose",
-            f"-DoutputFile={self.dep_tree_file}",
-        ]
+    def run_maven_dependency_tree(self, docker_image, pom_path="pom.xml"):
+        # for root, dirs, files in os.walk(self.project_dir):
+        #     if "pom.xml" in files:
+        #         pom_path = os.path.join(root, "pom.xml")       
+        #         print(pom_path)
+        try:
+            client = docker.from_env()
 
-        subprocess.run(cmd)
+            command = [
+                "mvn",
+                "dependency:tree",
+                "-Dscope=runtime",
+                "-DoutputType=text",
+                "-Dverbose",
+                f"-DoutputFile={self.dep_tree_file}",
+            ]
+            
+            container = client.containers.run(
+                image=docker_image,
+                command=command,
+                volumes={self.project_dir: {"bind": "/usr/src/app", "mode": "rw"}},
+                working_dir="/usr/src/app",
+                remove=True,
+                stdout=True,
+                stderr=True,
+            )
+            # log_stream = container.logs(stream=True)
+            # for line in tqdm(log_stream, desc="Constructing dependency tree", unit="lines"):
+            #     tqdm.write("*"*100)
+            print("[*] Dependency tree construction succeded") 
+        except (ContainerError, ImageNotFound, APIError) as e:
+            print("[*] Dependency tree construction failed") 
+            sys.exit()
 
     def extract_dependencies(self, lines):
 
@@ -387,6 +395,120 @@ class MavenUtils:
                 deps[name] = version
 
         return deps
+    
+    def detect_indent(self, element, default="  "):
+        for child in element:
+            if child.tail and "\n" in child.tail:
+                return child.tail.split("\n")[-1]
+        return default
+
+    def inject_exclusion(
+        self,
+        root,
+        parent_group,
+        parent_artifact,
+        exclude_group,
+        exclude_artifact
+    ):
+        dep = self.find_dependency(root, parent_group, parent_artifact)
+
+        if dep is None:
+            raise ValueError("Parent dependency not found")
+
+        base_indent = self.detect_indent(dep)
+        # base_indent = "\t"
+        child_indent = base_indent + base_indent
+        inner_indent = child_indent + base_indent
+
+        exclusions = dep.find("m:exclusions", self.NS)
+
+        if exclusions is None:
+            exclusions = etree.SubElement(
+                dep,
+                "{%s}exclusions" % self.NS["m"]
+            )
+            exclusions.text = "\n" + child_indent
+            exclusions.tail = "\n" + base_indent
+
+        # Idempotency check
+        for ex in exclusions.findall("m:exclusion", self.NS):
+            if (
+                ex.findtext("m:groupId", namespaces=self.NS) == exclude_group
+                and ex.findtext("m:artifactId", namespaces=self.NS) == exclude_artifact
+            ):
+                return False
+
+        exclusion = etree.SubElement(
+            exclusions,
+            "{%s}exclusion" % self.NS["m"]
+        )
+
+        etree.SubElement(
+            exclusion,
+            "{%s}groupId" % self.NS["m"]
+        ).text = exclude_group
+
+        etree.SubElement(
+            exclusion,
+            "{%s}artifactId" % self.NS["m"]
+        ).text = exclude_artifact
+
+        # Pretty formatting
+        exclusion.text = "\n" + inner_indent
+
+        for e in exclusion:
+            e.tail = "\n" + inner_indent
+
+        exclusion[-1].tail = "\n" + child_indent
+
+        return True
+    
+    def pom_update(self, package_name, fixedInVersion):
+        group_id, artifact_id = package_name.split(':')
+
+        tree = self.load_pom()
+        root = tree.getroot()
+
+        dep_already_present = self.find_dependency(root, group_id, artifact_id)
+
+        if dep_already_present is not None:
+            print(f"[*] Dependency - {group_id}:{artifact_id} exists")
+            self.update_dependency_version(root, dep_already_present, fixedInVersion)
+            print(f"\t[*] {group_id}:{artifact_id} updated to version - {fixedInVersion}")
+
+        else:
+            print(f"[*] Dependency - {group_id}:{artifact_id} does not exist as an individual dependency")
+
+            with open(self.dep_tree_path) as f:
+                tree_text = f.read()
+
+            parents = self.find_highest_parents(tree_text, package_name)
+            visited = set()
+
+            for p in parents:
+                parent_group, parent_artifact = p['root'].split(':')
+                parent_text = f"{parent_group}:{parent_artifact}"
+
+                if parent_text not in visited:
+                    print(f"\t[*] {group_id}:{artifact_id} is a child of {parent_text}")
+                    visited.add(parent_text)
+
+                    exclude_group, exclude_artifact = package_name.split(':')
+
+                    self.inject_exclusion(
+                        root,
+                        parent_group,
+                        parent_artifact,
+                        exclude_group,
+                        exclude_artifact
+                    )
+
+                    print(f"\t[*] {group_id}:{artifact_id} is excluded for parent - {parent_text}")
+
+            self.inject_dependency(root, exclude_group, exclude_artifact, fixedInVersion)
+            print(f"\t[*] {group_id}:{artifact_id} is injected as an individual dependency")
+
+        self.save_pom(tree)
 
     def scan_dependencies(self):
 

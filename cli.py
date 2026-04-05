@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import sqlite3
 from packaging.version import Version
@@ -13,24 +14,26 @@ from rich.table import Table
 console = Console()
 
 table = Table(title="Vulnerabilities")
-
-table.add_column("ID", style="magenta", no_wrap=True)
-table.add_column("Package", style="cyan")
-table.add_column("EcoSystem", style="cyan")
-table.add_column("Version", style="cyan")
-table.add_column("FixVersion", style="cyan")
+table.add_column("Dependency", style="cyan", no_wrap=True)
+table.add_column("Current version", style="cyan")
+table.add_column("CVE ID", style="cyan")
+table.add_column("Fixed In", style="cyan")
+# table.add_column("Recommended Upgrade", style="cyan")
+# table.add_column("FixVersion", style="cyan")
 
 def main():
 
-    parser = argparse.ArgumentParser(description="Vul scanner")
+    parser = argparse.ArgumentParser(description="Scan & Fix")
     parser.add_argument("--scan", help="Git URL to scan")
+    parser.add_argument("--fix", help="Git URL to fix")
 
     args = parser.parse_args()
 
+    project_dir = "/tmp/repo"
+    tree_path = "/tmp/repo/dependency-tree.txt"
+
     if args.scan:
         if is_valid_git_url(args.scan):
-            tree_path = "/tmp/repo/dependency-tree.txt"
-            project_dir = "/tmp/repo"
             maven = MavenUtils(project_dir=project_dir)
             if not os.path.exists(tree_path):
                 status = GitUtils().clone_public_repo(args.scan)  
@@ -56,12 +59,38 @@ def main():
                                 vid, fix_version = v
                                 if v not in printed:
                                     printed.add((v))
-                                    table.add_row(vid, package, "Maven", dep.get('version'), fix_version or "No Fix")   
+                                    table.add_row(package,dep.get('version'), vid, fix_version or "No Fix")   
+                                    # table.add_row(package,vid, package, "Maven", dep.get('version'), fix_version or "No Fix")   
                 console.print(table)
-    
+    elif args.fix:
+        if not os.path.exists(tree_path):
+            sys.exit()
+        else:
+            maven = MavenUtils(project_dir=project_dir)
+            with open(tree_path) as fp:
+                tree_text = fp.read()
+                dependencies = maven.parse_dependency_tree(tree_text) 
+                visited = set()
+                for dep in dependencies:
+                    package = f"{dep.get('groupId')}:{dep.get('artifactId')}"
+                    version = dep.get('version')
+                    data = (package,version)
+                    if data not in visited:
+                        visited.add(data)
+                        vul_present = query(package, version)
+                        if vul_present:
+                            versions = [v[1] for v in vul_present if v[1]]
+                            if versions:
+                                fix_version = max(versions)
+                                maven.pom_update(package,fix_version)
+                            # for v in vul_present:
+                            #     vid, fix_version = v
+                            #     if fix_version:
+                            #         pass
     else:
         print("Usage:")
         print("  python cli.py --scan")
+        print("  python cli.py --fix")
 
 
 if __name__ == "__main__":

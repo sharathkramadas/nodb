@@ -11,6 +11,11 @@ curl -L \
 wget https://storage.googleapis.com/osv-vulnerabilities/all.zip
 ```
 
+### Vulnerable repos
+* https://github.com/veracode/verademo/tree/main
+* https://github.com/SasanLabs/VulnerableApp
+* https://github.com/kaakaww/javaspringvulny
+
 ### Links
 
 * https://storage.googleapis.com/osv-vulnerabilities/all.zip

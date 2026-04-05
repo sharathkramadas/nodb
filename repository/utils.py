@@ -6,6 +6,7 @@ import shutil
 from git import Repo
 import requests
 import yaml
+import shutil
 
 class GitUtils:
     def __init__(self):
@@ -16,9 +17,11 @@ class GitUtils:
         self.repo_path = "/tmp/repo"
         self.gl = gitlab.Gitlab(self.GITLAB_URL, private_token=self.PRIVATE_TOKEN)
 
-    def clone_public_repo(self, repo_url):        
+    def clone_public_repo(self, repo_url):  
+        if os.path.exists(self.repo_path):
+            shutil.rmtree(self.repo_path)
         repo = Repo.clone_from(repo_url, self.repo_path)
-        return 'Repo clone complete'        
+        print("[*] Repo clone complete")
 
     def clone_repo(self, project_name):
         PROJECT_ID = self.get_project_id(project_name)

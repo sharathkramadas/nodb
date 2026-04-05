@@ -1,4 +1,4 @@
-FROM amazoncorretto:${java_version}
+FROM amazoncorretto:${java_version}-al2023
 
 RUN dnf install -y curl tar git --allowerasing && dnf clean all
 
