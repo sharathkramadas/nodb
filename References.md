@@ -21,5 +21,6 @@ wget https://storage.googleapis.com/osv-vulnerabilities/all.zip
 * https://storage.googleapis.com/osv-vulnerabilities/all.zip
 * https://storage.googleapis.com/osv-vulnerabilities/Maven/all.zip
 * https://storage.googleapis.com/osv-vulnerabilities/PyPI/all.zip
+* https://storage.googleapis.com/osv-vulnerabilities/Debian/all.zip
 
 

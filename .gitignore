@@ -3,3 +3,11 @@ venv
 Dockerfile.maven
 __pycache__
 Dockerfile.gradle
+container/image.tar
+container/image
+container/rootfs
+db/debian
+db/debian.zip
+db/.DS_Store
+.DS_Store
+db/osv_debian_lite.db
