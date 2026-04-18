@@ -1,5 +1,7 @@
 import os
 from repository.utils import GitUtils
+from gradle.utils import GradleUtils
+from db.osv_lite import query
 
 def find_pom_files(root_dir):
     pom_files = []
@@ -12,5 +14,14 @@ repo = "https://github.com/cdefense/vulnerable-java-maven"
 # repo = "https://github.com/WebGoat/WebGoat"
 repo = "https://github.com/veracode/verademo"
 repo = "https://github.com/melix/maven-repository-injection"
+# GitUtils().clone_public_repo(repo)  
+# repos = find_pom_files(GitUtils().repo_path)
+
+repo = "https://github.com/DataDog/vulnerable-java-application.git"
+
 GitUtils().clone_public_repo(repo)  
-repos = find_pom_files(GitUtils().repo_path)
+
+gradle = GradleUtils(project_dir="/tmp/repo")
+gradle.fix_vuls()
+
+

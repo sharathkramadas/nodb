@@ -1,0 +1,10 @@
+FROM amazoncorretto:${java_version}-al2023
+
+RUN dnf install -y curl tar git unzip findutils --allowerasing && dnf clean all
+
+RUN curl -fsSL https://services.gradle.org/distributions/gradle-${gradle_version}-bin.zip -o gradle.zip
+
+RUN unzip gradle.zip -d /opt
+
+ENV PATH="/opt/gradle-${gradle_version}/bin:$$PATH"
+

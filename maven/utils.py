@@ -20,6 +20,9 @@ import semver
 from lxml import etree
 from tqdm import tqdm
 from string import Template
+from db.osv_lite import query
+from rich.console import Console
+from rich.table import Table
 
 
 class MavenUtils:
@@ -105,7 +108,13 @@ class MavenUtils:
         except Exception:
             return None
 
-    def parse_dependency_tree(self, tree_text):
+    def parse_dependency_tree(self):
+        with open(self.dep_tree_path, 'r') as fp:
+            tree_text = fp.read()
+        java_version = self.get_java_version_from_pom()
+        maven_version = self.get_maven_version_from_wrapper()
+        docker_image = self.get_maven_docker_image(maven_version, java_version)    
+        self.run_maven_dependency_tree(docker_image)
 
         dependencies = []
         stack = []
@@ -166,9 +175,9 @@ class MavenUtils:
                 dependencies[dep] = ''.join(version.split(":")[:-1]) 
         return dependencies
 
-    def find_highest_parents(self, tree_text, target_ga):
+    def find_highest_parents(self, target_ga):
 
-        deps = self.parse_dependency_tree(tree_text)
+        deps = self.parse_dependency_tree()
 
         dep_map = {d["artifactId"]: d for d in deps}
 
@@ -486,10 +495,7 @@ class MavenUtils:
         else:
             print(f"[*] Dependency - {group_id}:{artifact_id} does not exist as an individual dependency")
 
-            with open(self.dep_tree_path) as f:
-                tree_text = f.read()
-
-            parents = self.find_highest_parents(tree_text, package_name)
+            parents = self.find_highest_parents(package_name)
             visited = set()
 
             for p in parents:
@@ -516,6 +522,47 @@ class MavenUtils:
             print(f"\t[*] {group_id}:{artifact_id} is injected as an individual dependency")
 
         self.save_pom(tree)
+
+    def fix_vuls(self):
+        dependencies = self.parse_dependency_tree() 
+        visited = set()
+        for dep in dependencies:
+            package = f"{dep.get('groupId')}:{dep.get('artifactId')}"
+            version = dep.get('version')
+            data = (package,version)
+            if data not in visited:
+                visited.add(data)
+                vul_present = query(package, version)
+                if vul_present:
+                    versions = [v[1] for v in vul_present if v[1]]
+                    if versions:
+                        fix_version = max(versions)
+                        self.pom_update(package,fix_version)
+
+    def output_table(self):
+        console = Console()
+        table = Table(title="Vulnerabilities")
+        table.add_column("Dependency", style="cyan", no_wrap=True)
+        table.add_column("Current version", style="cyan")
+        table.add_column("CVE ID", style="cyan")
+        table.add_column("Fixed In", style="cyan")            
+        dependencies = self.parse_dependency_tree() 
+        visited = set()
+        printed = set()        
+        for dep in dependencies:
+            package = f"{dep.get('groupId')}:{dep.get('artifactId')}"
+            version = dep.get('version')
+            data = (package,version)
+            if data not in visited:
+                visited.add(data)
+                vul_present = query(package, version)
+                if vul_present:
+                    for v in vul_present:
+                        vid, fix_version = v
+                        if v not in printed:
+                            printed.add((v))
+                            table.add_row(package,dep.get('version'), vid, fix_version or "No Fix")                               
+        console.print(table)
 
     def scan_dependencies(self):
 
