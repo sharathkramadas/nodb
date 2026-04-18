@@ -114,10 +114,11 @@ class GradleUtils:
         return dep, None, None                    
 
     def parse_dependency_tree(self):
-        java_version = self.get_java_version_from_gradle()
-        gradle_version = self.get_gradle_version_from_wrapper()
-        docker_image = self.get_gradle_docker_image(gradle_version, java_version)    
-        self.run_gradle_dependency_tree(docker_image)
+        if not os.path.exists(self.dep_tree_path):
+            java_version = self.get_java_version_from_gradle()
+            gradle_version = self.get_gradle_version_from_wrapper()
+            docker_image = self.get_gradle_docker_image(gradle_version, java_version)    
+            self.run_gradle_dependency_tree(docker_image)
 
         with open(self.dep_tree_path, 'r') as fp:
             tree_text = fp.read()

@@ -24,18 +24,13 @@ def main():
 
     if args.scan:
         if is_valid_git_url(args.scan):
-            if not os.path.exists(tree_path):
-                status = GitUtils().clone_public_repo(args.scan)  
-            maven = MavenUtils(project_dir=project_dir)                
-            maven.output_table()
+            status = GitUtils().clone_public_repo(args.scan)  
+            maven = MavenUtils(project_dir=project_dir) 
+            maven.output_table()              
     elif args.fix:
-        status = GitUtils().clone_public_repo(args.fix)
-        maven = MavenUtils(project_dir=project_dir)   
-        maven.parse_dependency_tree()        
-        tree_path = maven.dep_tree_path
-        if not os.path.exists(tree_path):
-            sys.exit()
-        else:
+        if is_valid_git_url(args.scan):
+            status = GitUtils().clone_public_repo(args.fix)
+            maven = MavenUtils(project_dir=project_dir)   
             maven.fix_vuls()
     else:
         print("Usage:")

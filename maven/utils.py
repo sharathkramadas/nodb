@@ -109,12 +109,14 @@ class MavenUtils:
             return None
 
     def parse_dependency_tree(self):
+        if not os.path.exists(self.dep_tree_path):
+            java_version = self.get_java_version_from_pom()
+            maven_version = self.get_maven_version_from_wrapper()
+            docker_image = self.get_maven_docker_image(maven_version, java_version)    
+            self.run_maven_dependency_tree(docker_image)
+
         with open(self.dep_tree_path, 'r') as fp:
             tree_text = fp.read()
-        java_version = self.get_java_version_from_pom()
-        maven_version = self.get_maven_version_from_wrapper()
-        docker_image = self.get_maven_docker_image(maven_version, java_version)    
-        self.run_maven_dependency_tree(docker_image)
 
         dependencies = []
         stack = []
@@ -429,7 +431,9 @@ class MavenUtils:
         dep = self.find_dependency(root, parent_group, parent_artifact)
 
         if dep is None:
-            raise ValueError("Parent dependency not found")
+            # continue
+            # raise ValueError("Parent dependency not found")
+            return False
 
         base_indent = self.detect_indent(dep)
         # base_indent = "\t"
